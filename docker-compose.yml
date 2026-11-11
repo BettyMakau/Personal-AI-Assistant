@@ -1,0 +1,14 @@
+# Optional local PostgreSQL:  docker compose up -d
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: pa
+      POSTGRES_PASSWORD: pa
+      POSTGRES_DB: pa
+    ports:
+      - "5432:5432"
+    volumes:
+      - pa_data:/var/lib/postgresql/data
+volumes:
+  pa_data:

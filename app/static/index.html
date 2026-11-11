@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Personal Assistant</title>
+<style>
+  :root { --bg:#f6f5f2; --panel:#fff; --ink:#1d1d1f; --muted:#6b6b70; --accent:#3b5bdb; --accent-soft:#e7ecff; --line:#e4e2dc; --ok:#2f9e44; --warn:#e8590c; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#151517; --panel:#1f1f22; --ink:#ececee; --muted:#9a9aa0; --accent:#7c93ff; --accent-soft:#262c48; --line:#2e2e33; } }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.5 system-ui, sans-serif; background:var(--bg); color:var(--ink); }
+  header { display:flex; align-items:center; gap:16px; padding:12px 20px; border-bottom:1px solid var(--line); background:var(--panel); position:sticky; top:0; z-index:2; flex-wrap:wrap; }
+  header h1 { font-size:17px; margin:0; }
+  nav { display:flex; gap:4px; }
+  nav button { border:0; background:none; color:var(--muted); padding:6px 12px; border-radius:8px; cursor:pointer; font:inherit; }
+  nav button.on { background:var(--accent-soft); color:var(--accent); font-weight:600; }
+  .pill { margin-left:auto; font-size:12px; padding:3px 10px; border-radius:99px; border:1px solid var(--line); color:var(--muted); }
+  .pill::before { content:"●"; margin-right:6px; }
+  .pill.claude::before { color:var(--ok); } .pill.ollama::before { color:var(--warn); } .pill.offline::before { color:#c92a2a; }
+  section { display:none; max-width:1100px; margin:0 auto; padding:20px; }
+  section.on { display:block; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:16px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px 18px; }
+  .card h2 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 10px; }
+  .affirmation { font-size:20px; line-height:1.4; margin:4px 0 12px; }
+  .muted { color:var(--muted); font-size:13px; }
+  .row { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+  .chip { border:1px solid var(--line); background:var(--panel); color:var(--ink); border-radius:8px; padding:4px 10px; cursor:pointer; font:inherit; }
+  .chip.on, .chip:hover { border-color:var(--accent); color:var(--accent); }
+  ul.list { list-style:none; padding:0; margin:0; }
+  ul.list li { padding:7px 0; border-bottom:1px solid var(--line); display:flex; gap:10px; align-items:baseline; }
+  ul.list li:last-child { border-bottom:0; }
+  .time { font-variant-numeric:tabular-nums; color:var(--muted); min-width:96px; font-size:13px; }
+  .bar { height:8px; background:var(--line); border-radius:99px; overflow:hidden; margin:8px 0; }
+  .bar > div { height:100%; background:var(--accent); }
+  input, textarea, select { font:inherit; color:var(--ink); background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:7px 9px; }
+  .btn { border:0; background:var(--accent); color:#fff; border-radius:8px; padding:7px 14px; font-weight:600; cursor:pointer; font:inherit; }
+  .x { border:0; background:none; color:var(--muted); cursor:pointer; margin-left:auto; }
+  /* calendar */
+  .week { display:grid; grid-template-columns:repeat(7, 1fr); gap:8px; }
+  .day { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:10px; min-height:160px; }
+  .day.today { border-color:var(--accent); }
+  .day h3 { margin:0 0 8px; font-size:13px; }
+  .ev { background:var(--accent-soft); border-radius:8px; padding:6px 8px; margin-bottom:6px; font-size:13px; position:relative; }
+  .ev .x { position:absolute; top:2px; right:4px; }
+  @media (max-width:800px) { .week { grid-template-columns:1fr; } .day { min-height:0; } }
+  /* chat */
+  #log { display:flex; flex-direction:column; gap:10px; min-height:50vh; max-height:65vh; overflow:auto; padding:4px; }
+  .msg { max-width:760px; padding:10px 14px; border-radius:12px; white-space:pre-wrap; }
+  .user { align-self:flex-end; background:var(--accent); color:#fff; }
+  .assistant { align-self:flex-start; background:var(--panel); border:1px solid var(--line); }
+  .tools { font-size:12px; color:var(--muted); margin-top:4px; }
+  #chatform { display:flex; gap:8px; margin-top:12px; }
+  #chatform textarea { flex:1; resize:none; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Assistant</h1>
+  <nav>
+    <button data-tab="today" class="on">Today</button>
+    <button data-tab="calendar">Calendar</button>
+    <button data-tab="chat">Chat</button>
+    <button data-tab="me">About me</button>
+  </nav>
+  <span id="mode" class="pill">checking…</span>
+</header>
+
+<section id="today" class="on">
+  <div class="grid">
+    <div class="card">
+      <h2>Today's affirmation</h2>
+      <p class="affirmation" id="aff"></p>
+      <div class="row"><span class="muted">How did this land?</span><span id="affrate" class="row"></span></div>
+    </div>
+    <div class="card">
+      <h2>Check-in</h2>
+      <div class="row" style="margin-bottom:8px"><span class="muted" style="min-width:56px">Mood</span><span id="mood" class="row"></span></div>
+      <div class="row" style="margin-bottom:8px"><span class="muted" style="min-width:56px">Energy</span><span id="energy" class="row"></span></div>
+      <div class="row"><input id="note" placeholder="Anything on your mind? (optional)" style="flex:1"><button class="btn" onclick="saveCheckin()">Save</button></div>
+      <p class="muted" id="checkinmsg"></p>
+    </div>
+    <div class="card">
+      <h2>Learning about you</h2>
+      <div id="onb"></div>
+    </div>
+    <div class="card">
+      <h2>Today's schedule</h2>
+      <ul class="list" id="todayevents"></ul>
+      <button class="chip" style="margin-top:10px" onclick="ask('Plan my day for today')">Plan my day with me →</button>
+    </div>
+    <div class="card">
+      <h2>Open tasks</h2>
+      <ul class="list" id="tasks"></ul>
+      <div class="row" style="margin-top:10px"><input id="newtask" placeholder="New task" style="flex:1"><input id="newtaskdue" type="date"><button class="btn" onclick="addTask()">Add</button></div>
+    </div>
+  </div>
+</section>
+
+<section id="calendar">
+  <div class="row" style="margin-bottom:12px">
+    <button class="chip" onclick="shiftWeek(-7)">← Prev</button>
+    <button class="chip" onclick="weekStart=monday(new Date());loadWeek()">This week</button>
+    <button class="chip" onclick="shiftWeek(7)">Next →</button>
+    <strong id="weeklabel" style="margin-left:8px"></strong>
+  </div>
+  <div class="week" id="week"></div>
+  <div class="card" style="margin-top:16px">
+    <h2>Add event</h2>
+    <div class="row">
+      <input id="evtitle" placeholder="Title" style="flex:2;min-width:160px">
+      <input id="evdate" type="date"><input id="evstart" type="time" value="09:00"><span class="muted">to</span><input id="evend" type="time" value="10:00">
+      <input id="evloc" placeholder="Location (optional)" style="flex:1;min-width:140px">
+      <button class="btn" onclick="addEvent()">Add</button>
+    </div>
+    <p class="muted" id="evmsg"></p>
+  </div>
+</section>
+
+<section id="chat">
+  <div class="row" style="margin-bottom:10px">
+    <button class="chip" onclick="newChat()">+ New chat</button>
+    <select id="convos" onchange="this.value && openChat(this.value)"><option value="">Past chats…</option></select>
+  </div>
+  <div class="card"><div id="log"></div>
+    <form id="chatform">
+      <textarea id="q" rows="2" placeholder="Ask me anything… (Enter to send, Shift+Enter for a new line)"></textarea>
+      <button class="btn">Send</button>
+    </form>
+  </div>
+</section>
+
+<section id="me">
+  <div class="grid">
+    <div class="card"><h2>Learning period</h2><div id="onb2"></div></div>
+    <div class="card"><h2>What I've learned (preferences)</h2><ul class="list" id="prefs"></ul></div>
+    <div class="card"><h2>Memories</h2><ul class="list" id="mems"></ul></div>
+    <div class="card"><h2>Recent check-ins</h2><ul class="list" id="checkins"></ul></div>
+  </div>
+</section>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const api = (p, opt={}) => fetch('/api/'+p, {headers:{'Content-Type':'application/json'}, ...opt}).then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d.detail || r.statusText); return d; });
+const post = (p, body) => api(p, {method:'POST', body: JSON.stringify(body||{})});
+const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const hm = s => s.slice(11,16);
+let convoId = null, mood = null, energy = null;
+
+// ---- tabs ----
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => show(b.dataset.tab));
+function show(tab) {
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x.dataset.tab === tab));
+  document.querySelectorAll('section').forEach(s => s.classList.toggle('on', s.id === tab));
+  ({today:loadToday, calendar:loadWeek, chat:loadConvos, me:loadMe})[tab]();
+}
+
+// ---- status ----
+async function loadStatus(lastMode) {
+  const s = await api('status');
+  $('title').textContent = s.assistant;
+  const mode = lastMode || s.last_mode || (s.claude_configured ? 'claude' : s.ollama_available ? 'ollama' : 'offline');
+  $('mode').className = 'pill ' + mode;
+  $('mode').textContent = {claude:'Online · Claude', ollama:'Offline · local model', offline:'Offline · basics only'}[mode];
+}
+
+// ---- today ----
+function scale(el, current, onPick) {
+  el.innerHTML = '';
+  [1,2,3,4,5].forEach(n => { const b = document.createElement('button'); b.className = 'chip' + (current===n?' on':''); b.textContent = n; b.onclick = () => onPick(n); el.appendChild(b); });
+}
+function onbHtml(o) {
+  const pct = o.completed ? 100 : Math.round(o.day / o.total_days * 100);
+  return `<div><strong>${o.completed ? 'Complete' : `Day ${o.day} of ${o.total_days}`}</strong></div>
+    <div class="bar"><div style="width:${pct}%"></div></div>
+    <div class="muted">${o.learned} of ${o.to_learn} key things learned</div>
+    ${o.summary ? `<p>${esc(o.summary)}</p>` : `<button class="chip" style="margin-top:10px" onclick="ask('Let\\'s do today\\'s learning session')">Continue today's session →</button>`}`;
+}
+async function loadToday() {
+  const t = await api('today');
+  $('aff').textContent = t.affirmation.text;
+  scale($('affrate'), t.affirmation.rating, async n => { await post(`affirmations/${t.affirmation.id}/rate`, {rating:n}); loadToday(); });
+  mood = t.checkin?.mood ?? mood; energy = t.checkin?.energy ?? energy;
+  scale($('mood'), mood, n => { mood = n; loadTodayScales(); });
+  scale($('energy'), energy, n => { energy = n; loadTodayScales(); });
+  $('checkinmsg').textContent = t.checkin ? 'Checked in today ✓' : '';
+  $('onb').innerHTML = onbHtml(t.onboarding);
+  $('todayevents').innerHTML = t.events.map(e => `<li><span class="time">${hm(e.start)}–${hm(e.end)}</span><span>${esc(e.title)}${e.location ? ` <span class="muted">· ${esc(e.location)}</span>` : ''}</span></li>`).join('') || '<li class="muted">Nothing scheduled</li>';
+  $('tasks').innerHTML = t.tasks.map(x => `<li><input type="checkbox" onchange="doneTask(${x.id})"><span>${esc(x.title)}${x.due ? ` <span class="muted">· ${esc(x.due)}</span>` : ''}</span></li>`).join('') || '<li class="muted">All clear</li>';
+}
+function loadTodayScales() { scale($('mood'), mood, n => { mood=n; loadTodayScales(); }); scale($('energy'), energy, n => { energy=n; loadTodayScales(); }); }
+async function saveCheckin() {
+  if (!mood) { $('checkinmsg').textContent = 'Pick a mood first.'; return; }
+  await post('checkin', {mood, energy, note: $('note').value || null}); $('note').value = ''; loadToday();
+}
+async function addTask() { const t = $('newtask').value.trim(); if (!t) return; await post('tasks', {title:t, due:$('newtaskdue').value || null}); $('newtask').value=''; loadToday(); }
+async function doneTask(id) { await post(`tasks/${id}/done`); loadToday(); }
+
+// ---- calendar ----
+function monday(d) { const x = new Date(d); x.setHours(0,0,0,0); x.setDate(x.getDate() - ((x.getDay()+6)%7)); return x; }
+let weekStart = monday(new Date());
+function shiftWeek(n) { weekStart.setDate(weekStart.getDate()+n); loadWeek(); }
+async function loadWeek() {
+  const end = new Date(weekStart); end.setDate(end.getDate()+6);
+  $('weeklabel').textContent = `${weekStart.toDateString().slice(4,10)} – ${end.toDateString().slice(4,10)}`;
+  const evs = await api(`events?start=${iso(weekStart)}&end=${iso(end)}`);
+  const todayIso = iso(new Date());
+  $('week').innerHTML = [...Array(7)].map((_, i) => {
+    const d = new Date(weekStart); d.setDate(d.getDate()+i); const k = iso(d);
+    const items = evs.filter(e => e.start.slice(0,10) === k).map(e =>
+      `<div class="ev"><button class="x" title="Delete" onclick="delEvent(${e.id})">×</button><div class="muted">${hm(e.start)}–${hm(e.end)}</div>${esc(e.title)}${e.location ? `<div class="muted">${esc(e.location)}</div>` : ''}</div>`).join('');
+    return `<div class="day ${k===todayIso?'today':''}"><h3>${d.toLocaleDateString(undefined,{weekday:'short', day:'numeric', month:'short'})}</h3>${items || '<span class="muted">—</span>'}</div>`;
+  }).join('');
+  if (!$('evdate').value) $('evdate').value = todayIso;
+}
+async function addEvent() {
+  const title = $('evtitle').value.trim(); if (!title) return;
+  const d = $('evdate').value;
+  try {
+    const r = await post('events', {title, start:`${d} ${$('evstart').value}`, end:`${d} ${$('evend').value}`, location:$('evloc').value || null});
+    $('evmsg').textContent = r.message; $('evtitle').value = ''; $('evloc').value=''; loadWeek();
+  } catch (e) { $('evmsg').textContent = e.message; }
+}
+async function delEvent(id) { await api(`events/${id}`, {method:'DELETE'}); loadWeek(); }
+
+// ---- chat ----
+const log = $('log'), q = $('q');
+function add(role, text, tools) {
+  const d = document.createElement('div'); d.className = 'msg ' + role; d.textContent = text;
+  if (tools && tools.length) { const t = document.createElement('div'); t.className='tools'; t.textContent = 'used: ' + tools.join(', '); d.appendChild(t); }
+  log.appendChild(d); log.scrollTop = log.scrollHeight; return d;
+}
+async function loadConvos() {
+  const c = await api('conversations');
+  $('convos').innerHTML = '<option value="">Past chats…</option>' + c.map(x => `<option value="${x.id}">${esc(x.title)}</option>`).join('');
+}
+function newChat() { convoId = null; log.innerHTML = ''; q.focus(); }
+async function openChat(id) { const c = await api('conversations/'+id); convoId = c.id; log.innerHTML=''; c.messages.forEach(m => add(m.role, m.content)); }
+function ask(text) { show('chat'); q.value = text; $('chatform').requestSubmit(); }
+$('chatform').onsubmit = async e => {
+  e.preventDefault(); const text = q.value.trim(); if (!text) return;
+  q.value = ''; add('user', text); const pending = add('assistant', '…');
+  try {
+    const d = await post('chat', {message:text, conversation_id:convoId});
+    convoId = d.conversation_id; pending.remove(); add('assistant', d.reply, d.tools_used); loadStatus(d.mode); loadConvos();
+  } catch (err) { pending.textContent = 'Error: ' + err.message; }
+};
+q.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('chatform').requestSubmit(); } });
+
+// ---- me ----
+async function loadMe() {
+  const m = await api('me');
+  $('onb2').innerHTML = onbHtml(m.onboarding);
+  $('prefs').innerHTML = m.preferences.map(p => `<li><strong style="min-width:130px">${esc(p.key.replace(/_/g,' '))}</strong><span>${esc(p.value)}</span></li>`).join('') || '<li class="muted">Nothing yet — chat with me to get started.</li>';
+  $('mems').innerHTML = m.memories.map(x => `<li><span>${esc(x.content)}</span><button class="x" title="Forget" onclick="forget(${x.id})">×</button></li>`).join('') || '<li class="muted">Nothing yet</li>';
+  $('checkins').innerHTML = m.checkins.map(c => `<li><span class="time">${c.day}</span><span>Mood ${c.mood}/5${c.energy ? ` · energy ${c.energy}/5` : ''}${c.note ? ` — ${esc(c.note)}` : ''}</span></li>`).join('') || '<li class="muted">No check-ins yet</li>';
+}
+async function forget(id) { await api(`memories/${id}`, {method:'DELETE'}); loadMe(); }
+
+loadStatus(); loadToday();
+</script>
+</body>
+</html>
